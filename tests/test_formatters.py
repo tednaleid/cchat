@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 
 import pytest
 
@@ -532,7 +531,7 @@ class TestFormatTimestamp:
     def test_non_string_with_str_fallback(self):
         # format_timestamp calls str(ts) before fromisoformat, so a non-string
         # that str() converts to a valid ISO date would work; otherwise em-dash.
-        assert format_timestamp(12345) == EM_DASH
+        assert format_timestamp(12345) == EM_DASH  # ty: ignore[invalid-argument-type]  # intentional wrong type
 
 
 # ===========================================================================

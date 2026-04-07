@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Optional
 
-import pytest
 
 from cchat.parser import (
     deduplicate_assistant_lines,
@@ -59,7 +58,7 @@ def make_assistant(msg_id: Optional[str] = None,
 
 def make_user(content=None) -> dict:
     """Build a typical user line dict."""
-    d = {"type": "user"}
+    d: dict[str, object] = {"type": "user"}
     if content is not None:
         d["message"] = {"content": content}
     return d
@@ -629,6 +628,7 @@ class TestExtractFileModifications:
              "input": {"file_path": "/z.py"}},
         ])
         result = extract_file_modifications(line)
+        assert result is not None
         assert len(result) == 3
         paths = [r["file_path"] for r in result]
         assert paths == ["/x.py", "/y.py", "/z.py"]

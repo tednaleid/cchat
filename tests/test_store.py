@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from cchat.store import (
-    ConversationInfo,
     _extract_snippet,
     _is_agent_call,
     _is_user_turn,
