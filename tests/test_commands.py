@@ -23,7 +23,6 @@ from cchat.commands import (
     list_cmd,
     search_cmd,
     tokens_cmd,
-    view_cmd,
 )
 
 
@@ -224,6 +223,7 @@ class TestListCmd:
             sort="date",
             no_cost=False,
             include_subagents=False,
+            fields=None,
             json_output=False,
             no_color=True,
         )
@@ -267,7 +267,7 @@ class TestListCmd:
 
         list_cmd.run(self._args(sort="size"))
         out = capsys.readouterr().out
-        lines = [l for l in out.strip().split("\n") if l.strip()]
+        lines = [line for line in out.strip().split("\n") if line.strip()]
         # Header + separator + 2 data rows
         assert len(lines) >= 4
 
@@ -280,7 +280,7 @@ class TestListCmd:
         list_cmd.run(self._args(limit=2))
         out = capsys.readouterr().out
         data_lines = [
-            l for l in out.strip().split("\n") if l.strip()
+            line for line in out.strip().split("\n") if line.strip()
         ]
         # Header + separator + 2 data rows = 4 lines
         assert len(data_lines) == 4
@@ -324,7 +324,7 @@ class TestListCmd:
         list_cmd.run(self._args())
         out = capsys.readouterr().out
         # Should have header row at minimum
-        assert "PROJECT" in out
+        assert "WORKSPACE" in out
         assert "SNIPPET" in out
 
     def test_no_color_disables_bold_header(self, make_conversation, capsys):
@@ -333,6 +333,55 @@ class TestListCmd:
         out = capsys.readouterr().out
         # No ANSI escape codes
         assert "\033[" not in out
+
+    def test_fields_selects_columns(self, make_conversation, capsys):
+        """--fields limits which columns appear in output."""
+        make_conversation([make_user_line("hello")])
+        list_cmd.run(self._args(fields="cost,slug"))
+        out = capsys.readouterr().out
+        assert "COST" in out
+        assert "SLUG" in out
+        assert "WORKSPACE" not in out
+        assert "SNIPPET" not in out
+
+    def test_fields_unknown_exits(self, make_conversation):
+        """--fields with an unknown field name exits with an error."""
+        make_conversation([make_user_line("hello")])
+        with pytest.raises(SystemExit, match="Unknown fields"):
+            list_cmd.run(self._args(fields="cost,bogus"))
+
+    def test_fields_remove_from_defaults(self, make_conversation, capsys):
+        """--fields with -prefix removes fields from defaults."""
+        make_conversation([make_user_line("hello")])
+        list_cmd.run(self._args(fields="-project,-tokens"))
+        out = capsys.readouterr().out
+        assert "PROJECT" not in out
+        assert "TOKENS" not in out
+        assert "WORKSPACE" in out
+        assert "SNIPPET" in out
+
+    def test_fields_remove_unknown_exits(self, make_conversation):
+        """--fields with -bogus exits with an error."""
+        make_conversation([make_user_line("hello")])
+        with pytest.raises(SystemExit, match="Unknown fields"):
+            list_cmd.run(self._args(fields="-bogus"))
+
+    def test_fields_positive_ignores_removes(self, make_conversation, capsys):
+        """Positive fields present means removes are ignored."""
+        make_conversation([make_user_line("hello")])
+        list_cmd.run(self._args(fields="cost,slug,-workspace"))
+        out = capsys.readouterr().out
+        assert "COST" in out
+        assert "SLUG" in out
+        assert "WORKSPACE" not in out
+
+    def test_fields_no_cost_removes_cost(self, make_conversation, capsys):
+        """--no-cost removes cost even if listed in --fields."""
+        make_conversation([make_user_line("hello")])
+        list_cmd.run(self._args(fields="cost,slug", no_cost=True))
+        out = capsys.readouterr().out
+        assert "COST" not in out
+        assert "SLUG" in out
 
     def test_include_subagents_table(self, make_conversation, projects_dir, capsys):
         """--include-subagents shows nested subagent rows in table output."""
@@ -365,7 +414,7 @@ class TestListCmd:
         out = capsys.readouterr().out
         assert "parent task" in out
         assert "abc123def456" in out
-        assert "Research the topic careful" in out  # truncated snippet
+        assert "Research the t" in out  # truncated snippet (width varies by terminal)
 
     def test_include_subagents_json(self, make_conversation, projects_dir, capsys):
         """--include-subagents with --json includes subagents array."""
@@ -496,7 +545,7 @@ class TestLinesCmd:
         lines_cmd.run(self._args(path, head=3))
         out = capsys.readouterr().out
         data_lines = [
-            l for l in out.strip().split("\n") if l.strip()
+            line for line in out.strip().split("\n") if line.strip()
         ]
         # header + separator + 3 data rows
         assert len(data_lines) == 5
@@ -510,7 +559,7 @@ class TestLinesCmd:
         lines_cmd.run(self._args(path, tail=2))
         out = capsys.readouterr().out
         data_lines = [
-            l for l in out.strip().split("\n") if l.strip()
+            line for line in out.strip().split("\n") if line.strip()
         ]
         # header + separator + 2 data rows
         assert len(data_lines) == 4
@@ -533,7 +582,7 @@ class TestLinesCmd:
         lines_cmd.run(self._args(path, from_line=3, to_line=5))
         out = capsys.readouterr().out
         data_lines = [
-            l for l in out.strip().split("\n") if l.strip()
+            line for line in out.strip().split("\n") if line.strip()
         ]
         # header + separator + 3 data rows
         assert len(data_lines) == 5
@@ -577,7 +626,7 @@ class TestLinesCmd:
         lines_cmd.run(self._args(path))
         out = capsys.readouterr().out
         data_lines = [
-            l for l in out.strip().split("\n") if l.strip()
+            line for line in out.strip().split("\n") if line.strip()
         ]
         # header + separator + 50 data rows = 52
         assert len(data_lines) == 52
@@ -885,8 +934,8 @@ class TestSearchCmd:
         assert "assistant" in out
         # The table output includes type column -- check data lines
         data_lines = [
-            l for l in out.strip().split("\n")
-            if l.strip() and not l.startswith("DATE") and "---" not in l
+            line for line in out.strip().split("\n")
+            if line.strip() and not line.startswith("DATE") and "---" not in line
         ]
         for dl in data_lines:
             assert "user" not in dl.lower().split()
@@ -900,8 +949,8 @@ class TestSearchCmd:
         search_cmd.run(self._args("keyword", limit=3))
         out = capsys.readouterr().out
         data_lines = [
-            l for l in out.strip().split("\n")
-            if l.strip() and "DATE" not in l and "---" not in l
+            line for line in out.strip().split("\n")
+            if line.strip() and "DATE" not in line and "---" not in line
         ]
         assert len(data_lines) == 3
 
@@ -940,8 +989,8 @@ class TestSearchCmd:
         search_cmd.run(self._args("findme", first_per_conv=True))
         out = capsys.readouterr().out
         data_lines = [
-            l for l in out.strip().split("\n")
-            if l.strip() and "DATE" not in l and "---" not in l
+            line for line in out.strip().split("\n")
+            if line.strip() and "DATE" not in line and "---" not in line
         ]
         # Should be exactly 2 matches (one per conversation)
         assert len(data_lines) == 2
@@ -1807,7 +1856,7 @@ class TestResolveAgent:
         agent_id = "abcdef1234567890a"
         import time
 
-        older = self._create_agent_file(
+        self._create_agent_file(
             projects_dir, agent_id,
             [make_user_line("old")],
             project_key="proj-a",
