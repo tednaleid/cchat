@@ -13,12 +13,13 @@ class _FullHelpParser(argparse.ArgumentParser):
     def error(self, message):
         sys.stderr.write(f"error: {message}\n\n")
         # If a subcommand was given, show its help instead of top-level
-        for action in self._subparsers._actions:
-            if isinstance(action, argparse._SubParsersAction):
-                for arg in sys.argv[1:]:
-                    if arg in action.choices:
-                        action.choices[arg].print_help(sys.stderr)
-                        sys.exit(2)
+        if self._subparsers is not None:
+            for action in self._subparsers._actions:
+                if isinstance(action, argparse._SubParsersAction):
+                    for arg in sys.argv[1:]:
+                        if arg in action.choices:
+                            action.choices[arg].print_help(sys.stderr)  # type: ignore[union-attr]
+                            sys.exit(2)
         self.print_help(sys.stderr)
         sys.exit(2)
 

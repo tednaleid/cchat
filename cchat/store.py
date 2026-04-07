@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cchat.costs import CostCache, TokenBreakdown
 
 CLAUDE_DIR = Path.home() / ".claude"
 PROJECTS_DIR = CLAUDE_DIR / "projects"
+SESSIONS_DIR = CLAUDE_DIR / "sessions"
 HISTORY_FILE = CLAUDE_DIR / "history.jsonl"
 
 
@@ -41,6 +46,9 @@ class ConversationInfo:
     total_tokens: int = 0
     model: str | None = None
     estimated_cost_usd: float | None = None
+    session_id: str | None = None
+    name: str | None = None
+    cwd: str | None = None
 
 
 @dataclass
@@ -116,6 +124,8 @@ def _scan_conversation(path: Path) -> ConversationInfo:
     last_timestamp = None
     slug = None
     snippet = None
+    session_id = None
+    cwd = None
     turn_count = 0
     agent_count = 0
     model = None
@@ -137,6 +147,12 @@ def _scan_conversation(path: Path) -> ConversationInfo:
 
             if slug is None and obj.get("slug"):
                 slug = obj["slug"]
+
+            if session_id is None and obj.get("sessionId"):
+                session_id = obj["sessionId"]
+
+            if cwd is None and obj.get("cwd"):
+                cwd = obj["cwd"]
 
             if snippet is None and _is_user_turn(obj):
                 snippet = _extract_snippet(obj)
@@ -192,7 +208,30 @@ def _scan_conversation(path: Path) -> ConversationInfo:
         turn_count=turn_count,
         agent_count=agent_count,
         model=model,
+        session_id=session_id,
+        cwd=cwd,
     )
+
+
+def _load_session_names() -> dict[str, str]:
+    """Load session names from ~/.claude/sessions/*.json.
+
+    Returns a mapping of sessionId -> name for sessions that have been renamed.
+    """
+    names: dict[str, str] = {}
+    if not SESSIONS_DIR.exists():
+        return names
+    for path in SESSIONS_DIR.glob("*.json"):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            sid = data.get("sessionId")
+            name = data.get("name")
+            if sid and name:
+                names[sid] = name
+        except (json.JSONDecodeError, OSError):
+            continue
+    return names
 
 
 def _resolve_project_key(project_key: str) -> str | None:
@@ -254,6 +293,12 @@ def discover_conversations(project_key: str | None = None) -> list[ConversationI
             if "subagents" in jsonl_file.parts:
                 continue
             results.append(_scan_conversation(jsonl_file))
+
+    # Populate session names from ~/.claude/sessions/*.json
+    session_names = _load_session_names()
+    for conv in results:
+        if conv.session_id and conv.session_id in session_names:
+            conv.name = session_names[conv.session_id]
 
     return results
 

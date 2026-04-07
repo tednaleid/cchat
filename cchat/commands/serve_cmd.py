@@ -27,7 +27,7 @@ def run(args: argparse.Namespace) -> None:
     except ImportError:
         raise SystemExit(
             "uvicorn is required for 'cchat serve'. "
-            "Install it with: pip install uvicorn[standard]"
+            "Install it with: uv tool install --force --editable '.[serve]'"
         )
 
     from cchat.web.app import create_app

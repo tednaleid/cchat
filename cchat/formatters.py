@@ -199,6 +199,14 @@ def format_model(model: str | None) -> str:
     return model.split("-")[-1] if "-" in model else model
 
 
+def format_workspace(cwd: str | None) -> str:
+    """Return the basename of the conversation's working directory."""
+    if cwd:
+        from pathlib import PurePosixPath
+        return PurePosixPath(cwd).name
+    return ""
+
+
 def format_json(data: object) -> str:
     """Pretty-print *data* as indented JSON."""
     return json.dumps(data, indent=2, default=str)

@@ -50,7 +50,7 @@ def make_assistant(
 
 def make_user(content=None) -> dict:
     """Build a typical user line dict."""
-    d = {"type": "user"}
+    d: dict[str, object] = {"type": "user"}
     if content is not None:
         d["message"] = {"content": content}
     return d

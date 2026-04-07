@@ -4,7 +4,30 @@ A CLI for interacting with Claude Code chats. It can also be a web server.
 
 # Installation
 
-idk, ask Claude
+Requires [uv](https://docs.astral.sh/uv/) and [just](https://github.com/casey/just).
+
+```
+just install
+```
+
+This installs the project with all optional dependencies (including the web UI)
+and dev tools (pytest).
+
+To install as a global tool instead:
+
+```
+uv tool install --editable '.[serve]'
+```
+
+# Development
+
+```
+just check        # run tests, lint, and typecheck
+just test         # run tests only
+just lint         # run ruff
+just typecheck    # run ty
+just pre-commit-hook  # install git pre-commit hook that runs check
+```
 
 # Usage
 

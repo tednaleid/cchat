@@ -429,7 +429,7 @@ def _output_projects_json(week_data: ProjectWeekData, num_weeks: int) -> None:
 
     for week_key in sorted_weeks:
         try:
-            week_start_dt = datetime.fromisoformat(week_key)
+            datetime.fromisoformat(week_key)
         except ValueError:
             continue
 

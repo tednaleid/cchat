@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -193,7 +192,18 @@ def _resolve_conv_path(uuid: str) -> Path:
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-    app = FastAPI(title="cchat", docs_url="/api/docs")
+    from contextlib import asynccontextmanager
+
+    _watcher_stop = asyncio.Event()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        asyncio.create_task(watch_filesystem(_watcher_stop))
+        yield
+        _watcher_stop.set()
+        _cost_cache.save()  # Flush any remaining dirty cache
+
+    app = FastAPI(title="cchat", docs_url="/api/docs", lifespan=lifespan)
 
     # No CORS middleware -- UI is served from the same origin.
 
@@ -553,19 +563,6 @@ def create_app() -> FastAPI:
             pass
         finally:
             manager.unsubscribe_list(websocket)
-
-    # ---- Lifecycle: start/stop file watcher ----
-
-    _watcher_stop = asyncio.Event()
-
-    @app.on_event("startup")
-    async def start_watcher():
-        asyncio.create_task(watch_filesystem(_watcher_stop))
-
-    @app.on_event("shutdown")
-    async def stop_watcher():
-        _watcher_stop.set()
-        _cost_cache.save()  # Flush any remaining dirty cache
 
     # ---- Static files (SPA fallback) ----
     if STATIC_DIR.exists():

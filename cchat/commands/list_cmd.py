@@ -3,8 +3,148 @@
 from __future__ import annotations
 
 import argparse
+import shutil
+import sys
 
 from cchat import costs, formatters, store
+
+# ---------------------------------------------------------------------------
+# Field definitions
+# ---------------------------------------------------------------------------
+
+ALL_FIELDS = [
+    "workspace", "project", "snippet", "first", "last", "turns", "agents",
+    "model", "tokens", "cost", "name", "slug",
+]
+
+DEFAULT_FIELDS = list(ALL_FIELDS)
+
+FIELD_HEADERS = {
+    "workspace": "WORKSPACE",
+    "project": "PROJECT",
+    "snippet": "SNIPPET",
+    "first": "FIRST",
+    "last": "LAST",
+    "turns": "TURNS",
+    "agents": "AGENTS",
+    "model": "MODEL",
+    "tokens": "TOKENS",
+    "cost": "COST",
+    "name": "NAME",
+    "slug": "SLUG",
+}
+
+
+def _build_cell(field: str, c: store.ConversationInfo, snippet_width: int) -> str:
+    """Return the formatted cell value for a given field and conversation."""
+    if field == "workspace":
+        return formatters.format_workspace(c.cwd)
+    if field == "project":
+        return c.project_key
+    if field == "snippet":
+        return formatters.truncate_middle(c.snippet or "", snippet_width)
+    if field == "first":
+        return formatters.format_timestamp(c.first_timestamp)
+    if field == "last":
+        return formatters.format_timestamp(c.last_timestamp)
+    if field == "turns":
+        return str(c.turn_count)
+    if field == "agents":
+        return str(c.agent_count)
+    if field == "model":
+        return formatters.format_model(c.model)
+    if field == "tokens":
+        return formatters.format_tokens(c.total_tokens)
+    if field == "cost":
+        return formatters.format_cost(c.estimated_cost_usd)
+    if field == "name":
+        return c.name or ""
+    if field == "slug":
+        return c.slug or ""
+    return ""
+
+
+def _build_subagent_cell(field: str, sa: store.SubagentInfo, snippet_width: int, no_cost: bool) -> str:
+    """Return the formatted cell value for a subagent row."""
+    if field == "snippet":
+        return "  -> " + formatters.truncate(sa.prompt_snippet or "(no prompt)", max(snippet_width - 5, 10))
+    if field == "first":
+        return formatters.format_timestamp(sa.first_timestamp)
+    if field == "last":
+        return formatters.format_timestamp(sa.last_timestamp)
+    if field == "model":
+        return formatters.format_model(sa.model)
+    if field == "tokens":
+        return formatters.format_tokens(sa.total_tokens) if not no_cost else "-"
+    if field == "cost":
+        return formatters.format_cost(sa.estimated_cost_usd)
+    if field == "slug":
+        return sa.agent_id
+    return ""
+
+
+def _compute_snippet_width(fields: list[str], conversations: list[store.ConversationInfo]) -> int:
+    """Compute snippet column width to fit the terminal.
+
+    Estimates the width of all non-snippet columns, then gives snippet
+    whatever space remains. Returns a minimum of 20.
+    """
+    if "snippet" not in fields:
+        return 0
+
+    if not sys.stdout.isatty():
+        return 10000
+
+    try:
+        term_width = shutil.get_terminal_size().columns
+    except (ValueError, OSError):
+        return 60
+
+    # Estimate width of each non-snippet column from headers + a sample of data
+    sep_width = 2  # two-space column separator
+    other_width = 0
+    for f in fields:
+        if f == "snippet":
+            continue
+        col_width = len(FIELD_HEADERS[f])
+        for c in conversations[:20]:
+            cell = _build_cell(f, c, 0)
+            col_width = max(col_width, len(cell))
+        other_width += col_width + sep_width
+
+    available = term_width - other_width - sep_width
+    return max(available, 20)
+
+
+def _parse_fields(fields_str: str | None, no_cost: bool) -> list[str]:
+    """Parse the --fields argument into a validated field list.
+
+    Fields prefixed with ``-`` remove from the defaults (e.g. ``-project``).
+    Positive fields select explicitly.  If the list contains only removals,
+    they are applied against the defaults.  If it contains any positive field,
+    removals are ignored.
+    """
+    if fields_str is not None:
+        raw = [f.strip() for f in fields_str.split(",") if f.strip()]
+        adds = [f for f in raw if not f.startswith("-")]
+        removes = {f[1:] for f in raw if f.startswith("-")}
+
+        unknown = [f for f in adds if f not in ALL_FIELDS]
+        unknown += [f for f in removes if f not in ALL_FIELDS]
+        if unknown:
+            raise SystemExit(f"Unknown fields: {', '.join(unknown)}. Available: {', '.join(ALL_FIELDS)}")
+
+        if adds:
+            fields = adds
+        else:
+            fields = [f for f in DEFAULT_FIELDS if f not in removes]
+    else:
+        fields = list(DEFAULT_FIELDS)
+
+    if no_cost and "cost" in fields:
+        fields.remove("cost")
+
+    return fields
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -19,6 +159,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
                    help="Skip cost computation for faster listing")
     p.add_argument("--include-subagents", action="store_true", default=False,
                    help="Show subagent entries nested under their parent conversation")
+    p.add_argument("-f", "--fields", metavar="FIELDS", default=None,
+                   help=f"Comma-separated columns to display; prefix with - to remove from defaults, use = for negatives e.g. -f=-project,-tokens (available: {','.join(ALL_FIELDS)})")
     p.add_argument("--json", action="store_true", dest="json_output",
                    help="Output as JSON")
     p.add_argument("--no-color", action="store_true",
@@ -74,8 +216,9 @@ def run(args: argparse.Namespace) -> None:
     if args.json_output:
         records = []
         for c in conversations:
-            rec = {
+            rec: dict[str, object] = {
                 "project_key": c.project_key,
+                "workspace": formatters.format_workspace(c.cwd),
                 "snippet": c.snippet or "",
                 "first_timestamp": c.first_timestamp,
                 "last_timestamp": c.last_timestamp,
@@ -85,6 +228,8 @@ def run(args: argparse.Namespace) -> None:
                 "total_tokens": c.total_tokens,
                 "size": c.size,
                 "slug": c.slug,
+                "name": c.name,
+                "cwd": c.cwd,
             }
             if not args.no_cost:
                 rec["estimated_cost_usd"] = c.estimated_cost_usd
@@ -107,43 +252,18 @@ def run(args: argparse.Namespace) -> None:
         print(formatters.format_json(records))
         return
 
-    if args.no_cost:
-        headers = ["PROJECT", "SNIPPET", "FIRST", "LAST", "TURNS", "AGENTS", "MODEL", "TOKENS", "SLUG"]
-    else:
-        headers = ["PROJECT", "SNIPPET", "FIRST", "LAST", "TURNS", "AGENTS", "MODEL", "TOKENS", "COST", "SLUG"]
+    fields = _parse_fields(args.fields, args.no_cost)
+    snippet_width = _compute_snippet_width(fields, conversations)
+    headers = [FIELD_HEADERS[f] for f in fields]
 
     rows: list[list[str]] = []
     for c in conversations:
-        row = [
-            c.project_key,
-            formatters.truncate_middle(c.snippet or "", 60),
-            formatters.format_timestamp(c.first_timestamp),
-            formatters.format_timestamp(c.last_timestamp),
-            str(c.turn_count),
-            str(c.agent_count),
-            formatters.format_model(c.model),
-            formatters.format_tokens(c.total_tokens),
-        ]
-        if not args.no_cost:
-            row.append(formatters.format_cost(c.estimated_cost_usd))
-        row.append(c.slug or "")
+        row = [_build_cell(f, c, snippet_width) for f in fields]
         rows.append(row)
 
         if args.include_subagents and c.uuid in subagents_by_conv:
             for sa in subagents_by_conv[c.uuid]:
-                sa_row = [
-                    "",
-                    "  -> " + formatters.truncate(sa.prompt_snippet or "(no prompt)", 55),
-                    formatters.format_timestamp(sa.first_timestamp),
-                    formatters.format_timestamp(sa.last_timestamp),
-                    "",
-                    "",
-                    formatters.format_model(sa.model),
-                    formatters.format_tokens(sa.total_tokens) if not args.no_cost else "-",
-                ]
-                if not args.no_cost:
-                    sa_row.append(formatters.format_cost(sa.estimated_cost_usd))
-                sa_row.append(sa.agent_id)
+                sa_row = [_build_subagent_cell(f, sa, snippet_width, args.no_cost) for f in fields]
                 rows.append(sa_row)
 
     print(formatters.format_table(rows, headers, no_color=args.no_color))

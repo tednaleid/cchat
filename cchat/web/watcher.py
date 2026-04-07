@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from cchat import parser, store
+from cchat import store
 
 
 class FileTracker:

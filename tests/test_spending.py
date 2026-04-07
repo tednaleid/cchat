@@ -6,11 +6,8 @@ import argparse
 import json
 import uuid as uuid_mod
 from datetime import datetime, timedelta
-from pathlib import Path
 
-import pytest
 
-import cchat.store as store
 from cchat.commands import spending_cmd
 
 
