@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cchat"
+version = "0.1.0"
+description = "Claude Code Chat Browser CLI"
+requires-python = ">=3.10"
+
+[project.scripts]
+cchat = "cchat.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["cchat"]
+omit = ["tests/*", "help.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+]
